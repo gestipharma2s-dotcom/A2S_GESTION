@@ -2,3 +2,6 @@ node_modules
 *.env
 *.sql
 *.md
+src/utils/dbDiagnostics.js
+src/pages/DBDiagnostics.jsx
+dist/assets/index-BLeLgOYc.js

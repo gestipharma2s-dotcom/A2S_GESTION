@@ -3,17 +3,26 @@ import { TABLES } from './supabaseClient';
 import { authService } from './authService';
 import { ROLES } from '../utils/constants';
 
+/**
+ * Service de gestion des utilisateurs
+ * CRUD complet avec validations et permissions
+ */
 export const userService = {
   // ============================================
   // VÉRIFICATION DES PERMISSIONS
   // ============================================
 
-  // Vérifier si l'utilisateur peut créer un utilisateur
-  async canCreate(currentUserProfile) {
+  /**
+   * Vérifier si l'utilisateur peut créer un utilisateur
+   */
+  canCreate(currentUserProfile) {
     return authService.canManageUsers(currentUserProfile);
   },
 
-  // Vérifier si l'utilisateur peut modifier un utilisateur
+  /**
+   * Vérifier si l'utilisateur peut modifier un utilisateur
+   * Un admin ne peut pas modifier un super_admin
+   */
   async canUpdate(currentUserProfile, targetUserId) {
     if (!authService.canManageUsers(currentUserProfile)) {
       return false;
@@ -27,7 +36,7 @@ export const userService = {
           return false;
         }
       } catch (error) {
-        console.error('Erreur vérification permission update:', error);
+        console.error('❌ Erreur vérification permission update:', error);
         return false;
       }
     }
@@ -35,13 +44,15 @@ export const userService = {
     return true;
   },
 
-  // Vérifier si l'utilisateur peut supprimer un utilisateur
+  /**
+   * Vérifier si l'utilisateur peut supprimer un utilisateur
+   * Seul un super_admin peut supprimer un super_admin
+   */
   async canDelete(currentUserProfile, targetUserId) {
     if (!authService.canManageUsers(currentUserProfile)) {
       return false;
     }
     
-    // Récupérer l'utilisateur cible
     try {
       const targetUser = await this.getById(targetUserId);
       
@@ -50,10 +61,9 @@ export const userService = {
         return currentUserProfile?.role === 'super_admin';
       }
       
-      // Un admin peut supprimer n'importe qui sauf un super_admin
       return true;
     } catch (error) {
-      console.error('Erreur vérification permission delete:', error);
+      console.error('❌ Erreur vérification permission delete:', error);
       return false;
     }
   },
@@ -223,9 +233,18 @@ export const userService = {
   // Mettre à jour un utilisateur
   async update(id, userData, currentUserProfile) {
     try {
+      // Debug: vérifier le profil reçu
+      console.log('🔍 Update - Profile reçu:', { 
+        id: currentUserProfile?.id,
+        email: currentUserProfile?.email,
+        role: currentUserProfile?.role,
+        hasCanManageUsers: authService.canManageUsers(currentUserProfile)
+      });
+      
       // Vérifier les permissions
       const canUpdate = await this.canUpdate(currentUserProfile, id);
       if (!canUpdate) {
+        console.error('❌ Permission denied - Profile:', currentUserProfile);
         const error = new Error('Vous n\'avez pas la permission de modifier cet utilisateur');
         error.code = 'PERMISSION_DENIED';
         throw error;
@@ -290,16 +309,21 @@ export const userService = {
   // Supprimer un utilisateur
   async delete(id, currentUserProfile) {
     try {
+      console.log('🗑️ Début suppression utilisateur:', { id, userRole: currentUserProfile?.role });
+      
       // Vérifier les permissions
       const canDelete = await this.canDelete(currentUserProfile, id);
       if (!canDelete) {
+        console.error('❌ Permission refusée pour suppression:', { id, role: currentUserProfile?.role });
         const error = new Error('Vous n\'avez pas la permission de supprimer cet utilisateur');
         error.code = 'PERMISSION_DENIED';
         throw error;
       }
+      console.log('✅ Permissions vérifiées');
 
       // ✅ VÉRIFIER LES RÉFÉRENCES avant suppression
       const referencesFound = await this.checkUserReferences(id);
+      console.log('🔎 Références vérifiées:', referencesFound);
       
       if (referencesFound.hasReferences) {
         const error = new Error(
@@ -314,22 +338,17 @@ export const userService = {
       }
 
       // 1️⃣ Supprimer l'utilisateur de la table users (PostgreSQL)
-      console.log('🗑️  Tentative de suppression de l\'utilisateur:', id);
-      
-      const { data: deleteResult, error: deleteUserError } = await supabase
+      console.log('🔧 Exécution de la suppression en BDD...');
+      const { error: deleteUserError } = await supabase
         .from(TABLES.USERS)
         .delete()
-        .eq('id', id)
-        .select();
-      
-      console.log('Résultat suppression:', { deleteResult, deleteUserError });
+        .eq('id', id);
       
       if (deleteUserError) {
         console.error('❌ Erreur suppression table users:', deleteUserError);
         throw deleteUserError;
       }
-      
-      console.log('✅ Suppression réussie');
+      console.log('✅ Utilisateur supprimé de la BDD');
 
       // 2️⃣ Supprimer l'authentification locale (la cascade ON DELETE CASCADE de la FK devrait faire ça)
       // Mais on peut aussi le faire explicitement si nécessaire:

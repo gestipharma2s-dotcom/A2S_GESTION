@@ -137,10 +137,16 @@ Cette action est IRRÉVERSIBLE !`;
 
     try {
       await userService.delete(userId, profile);
+      
+      // ✅ Supprimer localement de la liste immédiatement
+      setUsers(users.filter(u => u.id !== userId));
+      
       addNotification({
         type: 'success',
         message: 'Utilisateur supprimé avec succès'
       });
+      
+      // Recharger depuis Supabase en arrière-plan
       loadUsers();
     } catch (error) {
       if (error.code === 'PERMISSION_DENIED') {
@@ -185,7 +191,11 @@ Cette action est IRRÉVERSIBLE !`;
           });
         }
       } else {
-        await userService.update(selectedUser.id, formData, profile);
+        const updatedUser = await userService.update(selectedUser.id, formData, profile);
+        
+        // ✅ Mettre à jour localement la liste immédiatement
+        setUsers(users.map(u => u.id === selectedUser.id ? updatedUser : u));
+        
         addNotification({
           type: 'success',
           message: 'Utilisateur modifié avec succès'
